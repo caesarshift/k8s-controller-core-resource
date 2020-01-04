@@ -6,18 +6,21 @@ import (
 	"syscall"
 
 	log "github.com/sirupsen/logrus"
-	api_v1 "k8s.io/api/core/v1"
+	//api_v1 "k8s.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/watch"
+	//"k8s.io/apimachinery/pkg/runtime"
+	//"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/workqueue"
+
+	myresourceclientset "github.com/caesarshift/k8s-controller-core-resource/pkg/client/clientset/versioned"
+	myresourceinformer_v1 "github.com/caesarshift/k8s-controller-core-resource/pkg/client/informers/externalversions/myresource/v1"
 )
 
 // retrieve the Kubernetes cluster client from outside of the cluster
-func getKubernetesClient() kubernetes.Interface {
+func getKubernetesClient() (kubernetes.Interface, myresourceclientset.Interface) {
 	// construct the path to resolve to `~/.kube/config`
 	kubeConfigPath := os.Getenv("KUBECONFIG")
 
@@ -33,17 +36,32 @@ func getKubernetesClient() kubernetes.Interface {
 		log.Fatalf("getClusterConfig: %v", err)
 	}
 
+	myresourceClient, err := myresourceclientset.NewForConfig(config)
+	if err != nil {
+		log.Fatalf("getClusterConfig: %v", err)
+	}
+
 	log.Info("Successfully constructed k8s client")
-	return client
+	return client, myresourceClient
 }
 
 // main code path
 func main() {
 	// get the Kubernetes client for connectivity
-	client := getKubernetesClient()
+	client, myresourceClient := getKubernetesClient()
 
+	// retrieve our custom resource informer which was generated from
+	// the code generator and pass it the custom resource client, specifying
+	// we should be looking through all namespaces for listing and watching
+	informer := myresourceinformer_v1.NewMyResourceInformer(
+		myresourceClient,
+		meta_v1.NamespaceAll,
+		0,
+		cache.Indexers{},
+	)
 	// create the informer so that we can not only list resources
 	// but also watch them for all pods in the default namespace
+    /*
 	informer := cache.NewSharedIndexInformer(
 		// the ListWatch contains two different functions that our
 		// informer requires: ListFunc to take care of listing and watching
@@ -62,6 +80,7 @@ func main() {
 		0,             // no resync (period of 0)
 		cache.Indexers{},
 	)
+    */
 
 	// create a new queue so that when the informer gets a resource that is either
 	// a result of listing or watching, we can add an idenfitying key to the queue
